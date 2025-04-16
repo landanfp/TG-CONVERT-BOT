@@ -1,111 +1,36 @@
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, scoped_session
-
-import os
-
-import threading
-import asyncio
-
-from sqlalchemy import Column, Integer, Boolean, String, ForeignKey, UniqueConstraint, func
-
-
+from pymongo import MongoClient
 from config import Config
+import threading
 
-
-def start() -> scoped_session:
-    engine = create_engine(Config.DB_URI, client_encoding="utf8")
-    BASE.metadata.bind = engine
-    BASE.metadata.create_all(engine)
-    return scoped_session(sessionmaker(bind=engine, autoflush=False))
-
-
-BASE = declarative_base()
-SESSION = start()
+client = MongoClient(Config.DB_URI)
+db = client["tg_convert_bot"]  # اسم دیتابیس رو به دلخواه تغییر بده
 
 INSERTION_LOCK = threading.RLock()
 
-class Thumbnail(BASE):
-    __tablename__ = "thumbnail"
-    id = Column(Integer, primary_key=True)
-    msg_id = Column(Integer)
-    
-    def __init__(self, id, msg_id):
-        self.id = id
-        self.msg_id = msg_id
-
-Thumbnail.__table__.create(checkfirst=True)
-
+# ------------------ Thumbnail Collection ------------------
 async def df_thumb(id, msg_id):
     with INSERTION_LOCK:
-        msg = SESSION.query(Thumbnail).get(id)
-        if not msg:
-            msg = Thumbnail(id, msg_id)
-            SESSION.add(msg)
-            SESSION.flush()
-        else:
-            SESSION.delete(msg)
-            file = Thumbnail(id, msg_id)
-            SESSION.add(file)
-        SESSION.commit()
+        thumbs = db.thumbnails
+        thumbs.delete_one({"id": id})
+        thumbs.insert_one({"id": id, "msg_id": msg_id})
 
 async def del_thumb(id):
     with INSERTION_LOCK:
-        msg = SESSION.query(Thumbnail).get(id)
-        SESSION.delete(msg)
-        SESSION.commit()
+        db.thumbnails.delete_one({"id": id})
 
 async def get_thumb(id):
-    try:
-        t = SESSION.query(Thumbnail).get(id)
-        return t
-    finally:
-        SESSION.close()
-def start() -> scoped_session:
-    engine = create_engine(Config.DB_URI, client_encoding="utf8")
-    BASE.metadata.bind = engine
-    BASE.metadata.create_all(engine)
-    return scoped_session(sessionmaker(bind=engine, autoflush=False))
+    return db.thumbnails.find_one({"id": id})
 
-
-BASE = declarative_base()
-SESSION = start()
-
-INSERTION_LOCK = threading.RLock()
-
-class Settings(BASE):
-    __tablename__ = "settings"
-    id = Column(Integer, primary_key=True)
-    value = Column(Integer)
-    
-    def __init__(self, id, value):
-        self.id = id
-        self.value = value
-
-Settings.__table__.create(checkfirst=True)
-
+# ------------------ Settings Collection -------------------
 async def add(id, value):
     with INSERTION_LOCK:
-        g = SESSION.query(Settings).get(id)
-        if not g:
-            g = Settings(id, value)
-            SESSION.add(1)
-            SESSION.flush()
-        else:
-            SESSION.delete(g)
-            fil = Settings(id, value)
-            SESSION.add(1)
-        SESSION.commit()
+        settings = db.settings
+        settings.delete_one({"id": id})
+        settings.insert_one({"id": id, "value": value})
 
 async def remove(id):
     with INSERTION_LOCK:
-        g = SESSION.query(Settings).get(id)
-        SESSION.delete(g)
-        SESSION.commit()
+        db.settings.delete_one({"id": id})
 
 async def check(id):
-    try:
-        y = SESSION.query(Settings).get(id)
-        return y
-    finally:
-        SESSION.close()
+    return db.settings.find_one({"id": id})
